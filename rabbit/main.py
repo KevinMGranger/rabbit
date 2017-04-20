@@ -1,17 +1,16 @@
 import sys
-if sys.version_info < (3,0,0):
-    print("Please run me in Python 3.")
-    sys.exit(0)
-
-from .stackoverflowchatsession import StackOverflowChatSession
-import config
-
+import threading
 import asyncio
+import os
 import json
 import html
 import random
 from queue import Queue
+
+from .stackoverflowchatsession import StackOverflowChatSession
 from .dbmodel import User, get_session
+import config
+
 
 PYTHON_ROOM_ID = 6
 PERSONAL_SANDBOX_ROOM_ID = 118024
@@ -118,7 +117,7 @@ class Rabbit(StackOverflowChatSession):
 
     def onClose(self, was_clean, code, reason):
           print('Closed:', reason)
-          import sys; sys.exit(0)
+          sys.exit(0)
 
     def onIdle(self):
         while not self.admin_message_queue.empty():
@@ -129,7 +128,7 @@ class Rabbit(StackOverflowChatSession):
         print("Got admin message: {}".format(msg))
         if msg == "shutdown":
             print("Shutting down...")
-            import sys; sys.exit(0)
+            sys.exit(0)
         elif msg.startswith("say"):
             self.send_message(PRIMARY_ROOM_ID, msg.partition(" ")[2])
         elif msg.startswith("cancel"):
@@ -153,7 +152,6 @@ def create_and_run_chat_session(admin_message_queue = None):
     session = Rabbit(config.email, config.password, admin_message_queue)
     session.join_and_run_forever(PRIMARY_ROOM_ID)
 
-import threading
 
 #create a GUI the user can use to send admin commands. This function never returns.
 #(hint: use threads if you want to run both this and `create_and_run_chat_session`)
@@ -178,9 +176,24 @@ def create_admin_window(message_queue):
     root.mainloop()
 
 
+def blocking_listen_on_fifo(message_queue, fifo_name):
+    """Listen for commands on a FIFO"""
+
+    while True:
+        with open(fifo_name) as fifo:
+            for line in fifo:
+                message_queue.put(line)
+
+
 def main():
+    """Start the bot and listen for local commands"""
     message_queue = Queue()
-    t = threading.Thread(target=create_admin_window, args=(message_queue,))
-    t.start()
+
+    if 'FIFO' in sys.environ:
+        t = threading.Thread(target=blocking_listen_on_fifo, args=(message_queue, sys.environ['FIFO']))
+        t.start()
+    elif 'NOCMDS' not in sys.environ:
+        t = threading.Thread(target=create_admin_window, args=(message_queue,))
+        t.start()
 
     create_and_run_chat_session(message_queue)
