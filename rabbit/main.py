@@ -148,8 +148,12 @@ def main():
 
 
 def debug():
+    handler = logging.StreamHandler()
+    handler.setLevel(logging.DEBUG)
+    logger.addHandler(handler)
+
     session = Rabbit(config.email, config.password,
-        os.environ['room'], os.environ['trash'], os.environ['users'].split(':'))
+        os.environ['room'], os.environ['trash'], set(int(x) for x in os.environ['users'].split(':')))
 
     if 'tk' in os.environ:
         t = threading.Thread(target=create_admin_window, args=(session,))

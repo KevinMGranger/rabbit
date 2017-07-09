@@ -1,10 +1,14 @@
 import requests
 import json
 import asyncio
+import logging
 from urllib.parse import quote_plus
 from bs4 import BeautifulSoup as BS
 from autobahn.asyncio.websocket import WebSocketClientProtocol, WebSocketClientFactory
 import enum
+
+logger = logging.getLogger('rabbit')
+logger.setLevel(logging.DEBUG)
 
 EventType = enum.IntEnum('EventType', [
     "message_posted",
@@ -38,9 +42,11 @@ class StackOverflowChatSession:
         url = "https://stackoverflow.com/users/login"
         login_data = {"email": email, "password": password}
         session = requests.Session()
+        logger.debug("Logging in")
         session.post(url,login_data)
         #TODO: perform some cursory checking to confirm that logging in actually worked
 
+        logger.debug("Getting cookie")
         x = session.get("http://chat.stackoverflow.com")
 
         soup = BS(x.content, "html.parser")
@@ -133,6 +139,7 @@ class StackOverflowChatSession:
         Send a POST message using some predetermined headers and params that are always necessary when talking to SO.
         using this instead of requests.post will save you the effort of adding the fkey, cookie, etc yourself every time.
         """
+        logger.debug("Posting to {}".format(url))
         if params is None:
             params = {}
         params["fkey"] = self.fkey
