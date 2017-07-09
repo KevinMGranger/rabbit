@@ -115,15 +115,10 @@ class StackOverflowChatSession:
         factory = WebSocketClientFactory(url, headers={"Origin":"http://chat.stackoverflow.com"})
         factory.protocol = SoClient
         self.loop = asyncio.get_event_loop()
-        self.loop.call_later(1, self._onIdle)
         coro = self.loop.create_connection(factory, host, 80)
         self.loop.run_until_complete(coro)
         self.loop.run_forever()
         self.loop.close()
-
-    def _onIdle(self):
-        self.onIdle()
-        self.loop.call_later(1, self._onIdle)
 
     def _get_webservice_url(self, roomid):
         x = self._post("http://chat.stackoverflow.com/ws-auth", {"roomid":roomid})

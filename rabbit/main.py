@@ -6,7 +6,6 @@ import html
 import logging
 import random
 import threading
-from queue import Queue
 from .dbmodel import User, get_session
 from .sochat import StackOverflowChatSession, EventType
 
@@ -42,9 +41,8 @@ class Rabbit(StackOverflowChatSession):
             - "kick [user id]" - kicks the user, if bot has RO rights
             - "move [message id,message id,message id]" - moves one or more messages to the Rotating Knives room, if bot has RO rights
     """
-    def __init__(self, email, password, admin_message_queue, room, trash_room, authorized_users): 
+    def __init__(self, email, password, room, trash_room, authorized_users): 
         StackOverflowChatSession.__init__(self, email, password)
-        self.admin_message_queue = admin_message_queue
         self.room = room
         self.trash_room = trash_room
         self.authorized_users = authorized_users
@@ -66,7 +64,7 @@ class Rabbit(StackOverflowChatSession):
                     event_type = event["event_type"]
                     event_type = EventType(event_type)
                 except ValueError:
-                    raise Exception("Unrecognized event type: {} \nWith event data:".format(event_type, event))
+                    raise Exception("Unrecognized event type: {} \nWith event data: {}".format(event_type, event))
                 if event_type == 1: #ordinary user message
                     content = html.unescape(event["content"])
                     print(abbreviate("{}: {}".format(event["user_name"], content), 119))
@@ -97,11 +95,6 @@ class Rabbit(StackOverflowChatSession):
           print('Closed:', reason)
           import sys; sys.exit(0)
 
-    def onIdle(self):
-        while not self.admin_message_queue.empty():
-            msg = self.admin_message_queue.get()
-            self.onAdminMessage(msg)
-
     def onAdminMessage(self, msg):
         print("Got admin message: {}".format(msg))
         if msg == "shutdown":
@@ -122,24 +115,17 @@ class Rabbit(StackOverflowChatSession):
             print("Sorry, didn't understand that command.")
 
 
-#connect to the SO chat server. This function never returns.
-def create_and_run_chat_session(admin_message_queue = None):
-    if admin_message_queue is None:
-        admin_message_queue = Queue()
-
-    session = Rabbit(config.email, config.password, admin_message_queue, PRIMARY_ROOM_ID, ROTATING_KNIVES_ROOM_ID, AUTHORIZED_USERS)
-    session.join_and_run_forever(PRIMARY_ROOM_ID)
 
 #create a GUI the user can use to send admin commands. This function never returns.
 #(hint: use threads if you want to run both this and `create_and_run_chat_session`)
-def create_admin_window(message_queue):
+def create_admin_window(bot):
     from tkinter import Tk, Entry, Button
 
     def clicked():
-        message_queue.put(box.get())
+        bot.loop.call_soon_threadsafe(bot.onAdminMessage, box.get())
 
     def on_closing():
-        message_queue.put("shutdown")
+        bot.loop.call_soon_threadsafe(bot.onAdminMessage, "shutdown")
         root.destroy()
 
     root = Tk()
@@ -154,15 +140,18 @@ def create_admin_window(message_queue):
 
 
 def main():
-    message_queue = Queue()
-    t = threading.Thread(target=create_admin_window, args=(message_queue,))
+    session = Rabbit(config.email, config.password, PRIMARY_ROOM_ID, ROTATING_KNIVES_ROOM_ID, AUTHORIZED_USERS)
+    t = threading.Thread(target=create_admin_window, args=(session,))
     t.start()
 
-    create_and_run_chat_session(message_queue)
+    session.join_and_run_forever(PRIMARY_ROOM_ID)
+
 
 def debug():
-    message_queue = Queue()
-
     session = Rabbit(config.email, config.password,
-    message_queue, os.environ['room'], os.environ['trash'], os.environ['users'].split(':'))
+        os.environ['room'], os.environ['trash'], os.environ['users'].split(':'))
+
+    if 'tk' in os.environ:
+        t = threading.Thread(target=create_admin_window, args=(session,))
+        t.start()
     session.join_and_run_forever(os.environ['room'])
