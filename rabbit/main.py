@@ -57,7 +57,7 @@ class Rabbit(StackOverflowChatSession):
 
     def onMessage(self, payload):
         d = json.loads(payload.decode("utf-8"))
-        logger.debug(f"Payload: {d}")
+        logger.debug("Payload: {}".format(d))
         for ROOM_ID, data in d.items():
             if "e" not in data: #some kind of keepalive message that we don't care about
                 continue
@@ -91,7 +91,7 @@ class Rabbit(StackOverflowChatSession):
                         print("Info: Unknown event content {} in account level changed event.".format(repr(event["content"])))
                         print(event)
                 else:
-                    logger.info(f"Event: {event_type}")
+                    logger.info("Event: {}".format(event_type))
 
     def onClose(self, was_clean, code, reason):
           print('Closed:', reason)
