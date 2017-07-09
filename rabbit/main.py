@@ -1,53 +1,28 @@
 import sys
-if sys.version_info < (3,0,0):
-    print("Please run me in Python 3.")
-    sys.exit(0)
-
-from .stackoverflowchatsession import StackOverflowChatSession
-import config
-
+import os
 import asyncio
 import json
 import html
+import logging
 import random
+import threading
 from queue import Queue
 from .dbmodel import User, get_session
+from .sochat import StackOverflowChatSession, EventType
+
+import config
 
 PYTHON_ROOM_ID = 6
 PERSONAL_SANDBOX_ROOM_ID = 118024
 ROTATING_KNIVES_ROOM_ID = 71097
+AUTHORIZED_USERS = {
+            953482, #Kevin
+            6621329 #Terry
+        }
 
-#room that all of the bot's actions will occur in.
-#todo: make it possible for the bot to operate simultaneously in multiple rooms. The chat API supports this natively, I just didn't account for it in my design.
 PRIMARY_ROOM_ID = PYTHON_ROOM_ID
 
-event_type_names = [
-    "placeholder because ids are 1-indexed",
-    "message posted",
-    "message edited",
-    "user entered",
-    "user left",
-    "room name changed",
-    "message starred",
-    "UNKNOWN",
-    "user mentioned",
-    "message flagged",
-    "message deleted",
-    "file added",
-    "moderator flag",
-    "user settings chagned",
-    "global notification",
-    "account level changed",
-    "user notification",
-    "invitation",
-    "message reply",
-    "message moved out",
-    "message moved in",
-    "time break",
-    "feed ticker",
-    "user suspended",
-    "user merged",
-]
+logger = logging.getLogger('rabbit')
 
 def abbreviate(msg, maxlen=25):
     if len(msg) < maxlen: return msg
@@ -67,13 +42,12 @@ class Rabbit(StackOverflowChatSession):
             - "kick [user id]" - kicks the user, if bot has RO rights
             - "move [message id,message id,message id]" - moves one or more messages to the Rotating Knives room, if bot has RO rights
     """
-    def __init__(self, email, password, admin_message_queue): 
+    def __init__(self, email, password, admin_message_queue, room, trash_room, authorized_users): 
         StackOverflowChatSession.__init__(self, email, password)
         self.admin_message_queue = admin_message_queue
-        self.authorized_users = {
-            953482, #Kevin
-            6621329 #Terry
-        }
+        self.room = room
+        self.trash_room = trash_room
+        self.authorized_users = authorized_users
 
     def onConnect(self, response):
         print('Connected:', response.peer)
@@ -83,12 +57,15 @@ class Rabbit(StackOverflowChatSession):
 
     def onMessage(self, payload):
         d = json.loads(payload.decode("utf-8"))
+        logger.debug(f"Payload: {d}")
         for ROOM_ID, data in d.items():
             if "e" not in data: #some kind of keepalive message that we don't care about
                 continue
             for event in data["e"]:
-                event_type = event["event_type"]
-                if event_type >= len(event_type_names):
+                try:
+                    event_type = event["event_type"]
+                    event_type = EventType(event_type)
+                except ValueError:
                     raise Exception("Unrecognized event type: {} \nWith event data:".format(event_type, event))
                 if event_type == 1: #ordinary user message
                     content = html.unescape(event["content"])
@@ -96,7 +73,7 @@ class Rabbit(StackOverflowChatSession):
                     if event["user_id"] in self.authorized_users: #possible administrator command
                         if content == "!ping":
                             print("Detected a command. Replying...")
-                            self.send_message(PRIMARY_ROOM_ID, "pong")
+                            self.send_message(self.room, "pong")
                 elif event_type in (3,4): #user entered/left
                     action = {3:"entered", 4:"left"}[event_type]
                     print("user {} {} room {}".format(repr(event["user_name"]), action, repr(event["room_name"])))
@@ -109,12 +86,12 @@ class Rabbit(StackOverflowChatSession):
 
                         #now post a picture of a bunny.
                         bunny_url = random.choice(config.kick_reply_images)
-                        self.send_message(PRIMARY_ROOM_ID, bunny_url)
+                        self.send_message(self.room, bunny_url)
                     else:
                         print("Info: Unknown event content {} in account level changed event.".format(repr(event["content"])))
                         print(event)
                 else:
-                    print(event_type_names[event_type])
+                    logger.info(f"Event: {event_type}")
 
     def onClose(self, was_clean, code, reason):
           print('Closed:', reason)
@@ -131,16 +108,16 @@ class Rabbit(StackOverflowChatSession):
             print("Shutting down...")
             import sys; sys.exit(0)
         elif msg.startswith("say"):
-            self.send_message(PRIMARY_ROOM_ID, msg.partition(" ")[2])
+            self.send_message(self.room, msg.partition(" ")[2])
         elif msg.startswith("cancel"):
             messageId = msg.partition(" ")[2]
             self.cancel_stars(messageId)
         elif msg.startswith("kick"):
             userId = msg.partition(" ")[2]
-            self.kick(PRIMARY_ROOM_ID, userId)
+            self.kick(self.room, userId)
         elif msg.startswith("move"):
             messageIds = msg.partition(" ")[2].split()
-            self.move_messages(PRIMARY_ROOM_ID, messageIds, ROTATING_KNIVES_ROOM_ID)
+            self.move_messages(self.room, messageIds, self.trash_room)
         else:
             print("Sorry, didn't understand that command.")
 
@@ -150,10 +127,8 @@ def create_and_run_chat_session(admin_message_queue = None):
     if admin_message_queue is None:
         admin_message_queue = Queue()
 
-    session = Rabbit(config.email, config.password, admin_message_queue)
+    session = Rabbit(config.email, config.password, admin_message_queue, PRIMARY_ROOM_ID, ROTATING_KNIVES_ROOM_ID, AUTHORIZED_USERS)
     session.join_and_run_forever(PRIMARY_ROOM_ID)
-
-import threading
 
 #create a GUI the user can use to send admin commands. This function never returns.
 #(hint: use threads if you want to run both this and `create_and_run_chat_session`)
@@ -184,3 +159,10 @@ def main():
     t.start()
 
     create_and_run_chat_session(message_queue)
+
+def debug():
+    message_queue = Queue()
+
+    session = Rabbit(config.email, config.password,
+    message_queue, os.environ['room'], os.environ['trash'], os.environ['users'].split(':'))
+    session.join_and_run_forever(os.environ['room'])

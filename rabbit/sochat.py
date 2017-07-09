@@ -4,7 +4,34 @@ import asyncio
 from urllib.parse import quote_plus
 from bs4 import BeautifulSoup as BS
 from autobahn.asyncio.websocket import WebSocketClientProtocol, WebSocketClientFactory
+import enum
 
+EventType = enum.IntEnum('EventType', [
+    "message_posted",
+    "message_edited",
+    "user_entered",
+    "user_left",
+    "room_name_changed",
+    "message_starred",
+    "UNKNOWN",
+    "user_mentioned",
+    "message_flagged",
+    "message_deleted",
+    "file_added",
+    "moderator_flag",
+    "user_settings_chagned",
+    "global_notification",
+    "account_level_changed",
+    "user_notification",
+    "invitation",
+    "message_reply",
+    "message_moved_out",
+    "message_moved_in",
+    "time_break",
+    "feed_ticker",
+    "user_suspended",
+    "user_merged",
+])
 
 class StackOverflowChatSession:
     def __init__(self, email, password):

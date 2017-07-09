@@ -1,4 +1,4 @@
-from setuptools import setup, find_packages
+from setuptools import setup
 
 setup(
     name='rabbit',
@@ -19,6 +19,7 @@ setup(
         console_scripts=[
             'rabbit_userscript=rabbit.userscript_server:main',
             'rabbit=rabbit.main:main',
+            'bugs=rabbit.main:debug'
         ]
     )
 )
