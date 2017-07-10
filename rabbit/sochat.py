@@ -8,7 +8,6 @@ from autobahn.asyncio.websocket import WebSocketClientProtocol, WebSocketClientF
 import enum
 
 logger = logging.getLogger('rabbit')
-logger.setLevel(logging.DEBUG)
 
 EventType = enum.IntEnum('EventType', [
     "message_posted",
@@ -104,13 +103,11 @@ class StackOverflowChatSession:
         pass
     def onClose(self, was_clean, code, reason):
         pass
-    def onIdle(self):
-        pass
 
-    def join_and_run_forever(self, roomid):
+    def join_and_run_forever(self, roomid):[
         session = self
         #yes, I'm putting a class definition inside a method definition. I acknowledge that this is weird.
-        #this has to go here because I don't see any other way for the class' methods to refer to `self` properly.
+        #this has to go here because I don't see any other way for the class' methods to refer to `self` properly.]
         class SoClient(WebSocketClientProtocol):
             def onConnect(self, response): session.onConnect(response)
             def onOpen(self): session.onOpen()
