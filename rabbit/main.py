@@ -66,12 +66,7 @@ class Rabbit(StackOverflowChatSession):
                 except ValueError:
                     raise Exception("Unrecognized event type: {} \nWith event data: {}".format(event_type, event))
                 if event_type == 1: #ordinary user message
-                    content = html.unescape(event["content"])
-                    print(abbreviate("{}: {}".format(event["user_name"], content), 119))
-                    if event["user_id"] in self.authorized_users: #possible administrator command
-                        if content == "!ping":
-                            print("Detected a command. Replying...")
-                            self.send_message(self.room, "pong")
+                    self._on_regular_message(ROOM_ID, event)
                 elif event_type in (3,4): #user entered/left
                     action = {3:"entered", 4:"left"}[event_type]
                     print("user {} {} room {}".format(repr(event["user_name"]), action, repr(event["room_name"])))
@@ -91,15 +86,23 @@ class Rabbit(StackOverflowChatSession):
                 else:
                     logger.info("Event: {}".format(event_type))
 
+    def _on_regular_message(self, room_id, event):
+        content = html.unescape(event["content"])
+        print(abbreviate("{}: {}".format(event["user_name"], content), 119))
+        if event["user_id"] in self.authorized_users: #possible administrator command
+            if content == "!ping":
+                print("Detected a command. Replying...")
+                self.send_message(self.room, "pong")
+
     def onClose(self, was_clean, code, reason):
-          print('Closed:', reason)
-          import sys; sys.exit(0)
+        print('Closed:', reason)
+        sys.exit(0)
 
     def onAdminMessage(self, msg):
         print("Got admin message: {}".format(msg))
         if msg == "shutdown":
             print("Shutting down...")
-            import sys; sys.exit(0)
+            sys.exit(0)
         elif msg.startswith("say"):
             self.send_message(self.room, msg.partition(" ")[2])
         elif msg.startswith("cancel"):
