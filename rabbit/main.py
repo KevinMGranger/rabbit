@@ -6,6 +6,7 @@ import html
 import logging
 import random
 import threading
+import re
 from .dbmodel import User, get_session
 from .sochat import StackOverflowChatSession, EventType
 
@@ -87,12 +88,38 @@ class Rabbit(StackOverflowChatSession):
                     logger.info("Event: {}".format(event_type))
 
     def _on_regular_message(self, room_id, event):
+        # TODO: never ever react to self messages
         content = html.unescape(event["content"])
         print(abbreviate("{}: {}".format(event["user_name"], content), 119))
         if event["user_id"] in self.authorized_users: #possible administrator command
             if content == "!ping":
                 print("Detected a command. Replying...")
                 self.send_message(self.room, "pong")
+        logger.debug("checking for bad code for message from room {}".format(room_id))
+        if self._is_misformatted_code(content):
+            # TODO: ping the user (but keep track of it so we only remind once. perhaps count anyway, but notify only once)
+            msg = (
+                "That looks like improperly formatted code. "
+                "You should check the "
+                "[Illustrated Guide To Formatting Code In Chat](https://sopython.com/wiki/An_Illustrated_Guide_To_Formatting_Code_In_Chat), "
+                "and make sure you've read the [room rules](https://sopython.com/chatroom) since it's mentioned there."
+            )
+            self.send_message(self.room, msg)
+
+
+    def _is_misformatted_code(self, content):
+        """
+        Determine if the given message content contains unformatted python code.
+        Currently, only the triple-backtick multiline case is handled.
+        """
+        # in the future, perhaps some library that guesses langs could help
+        # (similar to how pygments does it.)
+        # Or we could just search for python keywords / popular module names
+        match = re.match(
+            r"<div class='full'>.*```.* <br>.*<br> ```.*</div>$",
+            content)
+        logger.debug("{} {} match the bad code regex".format(content, "did" if match is not None else "didn't"))
+        return match is not None
 
     def onClose(self, was_clean, code, reason):
         print('Closed:', reason)
@@ -154,6 +181,8 @@ def debug():
     handler = logging.StreamHandler()
     handler.setLevel(logging.DEBUG)
     logger.addHandler(handler)
+    logger.setLevel(logging.DEBUG)
+    logger.debug("test")
 
     session = Rabbit(config.email, config.password,
         os.environ['room'], os.environ['trash'], set(int(x) for x in os.environ['users'].split(':')))
